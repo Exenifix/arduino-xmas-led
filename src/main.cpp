@@ -6,8 +6,9 @@
 #define G_PIN 6
 #define B_PIN 5
 
-int r, g, b, rd = 1, gd = 1, bd = 1;
-constexpr int OUTPUT_PINS[] = {R_PIN, G_PIN, B_PIN};
+int colors[] = {0, 0, 0};
+int deltas[] = {1, 1, 1};
+constexpr int COLOR_PINS[] = {R_PIN, G_PIN, B_PIN};
 
 int speed = 10;
 bool pwmEnabled = false;
@@ -20,44 +21,42 @@ uint16_t getCommand() {
     return data.flags == 1 ? 0 : data.command;
 }
 
-int irandom(const int a, const int b) {
-    return static_cast<int>(random(a, b));
-}
-
 void updateRGB() {
-    analogWrite(R_PIN, r);
-    analogWrite(G_PIN, g);
-    analogWrite(B_PIN, b);
-}
-
-void invertDelta(int&d) {
-    d != 0 ? d = 0 : d = 1;
-}
-
-void invertLed(int&led) {
-    led > 0 ? led = 0 : led = 255;
-}
-
-void pwmUpdate(int&v, int&d) {
-    v += d;
-    if (v < 0) {
-        v = 0;
-        d = 1;
-    }
-    else if (v > 255) {
-        v = 255;
-        d = -1;
+    for (int i = 0; i < 3; i++) {
+        analogWrite(COLOR_PINS[i], colors[i]);
     }
 }
 
-void blinkUpdate(int&v, const int d) {
-    if (d != 0) {
-        invertLed(v);
+void invertDelta(const int i) {
+    deltas[i] = deltas[i] != 0 ? 0 : 1;
+}
+
+void invertLed(const int i) {
+    colors[i] = colors[i] > 0 ? 0 : 255;
+}
+
+void pwmUpdate(const int i) {
+    int c = colors[i];
+    c += deltas[i];
+    if (c < 0) {
+        c = 0;
+        deltas[i] = 1;
+    }
+    else if (c > 255) {
+        c = 255;
+        deltas[i] = -1;
+    }
+    colors[i] = c;
+}
+
+void blinkUpdate(const int i) {
+    if (deltas[i] != 0) {
+        invertLed(i);
     }
 }
 
 void setup() {
-    for (const int pin: OUTPUT_PINS) {
+    for (const int pin: COLOR_PINS) {
         pinMode(pin, OUTPUT);
     }
 
@@ -69,17 +68,17 @@ void setup() {
 void loop() {
     if (pwmEnabled) {
         if (millis() >= nextPwmUpdate) {
-            pwmUpdate(r, rd);
-            pwmUpdate(g, gd);
-            pwmUpdate(b, bd);
+            for (int i = 0; i < 3; i++) {
+                pwmUpdate(i);
+            }
             nextPwmUpdate = millis() + speed;
         }
     }
     else if (blinkEnabled) {
         if (millis() >= nextBlinkUpdate) {
-            blinkUpdate(r, rd);
-            blinkUpdate(g, gd);
-            blinkUpdate(b, bd);
+            for (int i = 0; i < 3; i++) {
+                blinkUpdate(i);
+            }
             nextBlinkUpdate = millis() + speed * 100;
         }
     }
@@ -92,8 +91,10 @@ void loop() {
                 Serial.println(F("HALT"));
                 pwmEnabled = false;
                 blinkEnabled = false;
-                r = g = b = 0;
-                rd = gd = bd = 1;
+                for (int i = 0; i < 3; i++) {
+                    colors[i] = 0;
+                    deltas[i] = 1;
+                }
                 break;
             }
             case 25: {
@@ -105,57 +106,61 @@ void loop() {
             case 22: {
                 // *
                 Serial.println(F("RGB OFF"));
-                r = g = b = 0;
+                for (int & c : colors) {
+                    c = 0;
+                }
                 break;
             }
             case 13: {
                 // #
                 Serial.println(F("RGB RNG"));
-                r = irandom(0, 255);
-                g = irandom(0, 255);
-                b = irandom(0, 255);
+                for (int & c : colors) {
+                    c = static_cast<int>(random(0, 255));
+                }
                 break;
             }
             case 24: {
                 // UP
                 Serial.println(F("DELTAS OFF"));
-                rd = gd = bd = 0;
+                for (int & d : deltas) {
+                    d = 0;
+                }
                 break;
             }
             case 8: {
                 // LEFT
                 Serial.println(F("RD SWITCH"));
-                invertDelta(rd);
+                invertDelta(0);
                 break;
             }
             case 82: {
                 // DOWN
                 Serial.println(F("GD SWITCH"));
-                invertDelta(gd);
+                invertDelta(1);
                 break;
             }
             case 90: {
                 // RIGHT
                 Serial.println(F("BD SWITCH"));
-                invertDelta(bd);
+                invertDelta(2);
                 break;
             }
             case 7: {
                 // 7
                 Serial.println(F("R SWITCH"));
-                invertLed(r);
+                invertLed(0);
                 break;
             }
             case 21: {
                 // 8
                 Serial.println(F("G SWITCH"));
-                invertLed(g);
+                invertLed(1);
                 break;
             }
             case 9: {
                 // 9
                 Serial.println(F("B SWITCH"));
-                invertLed(b);
+                invertLed(2);
                 break;
             }
             case 69: {
@@ -180,6 +185,18 @@ void loop() {
                 // 5
                 Serial.println(F("BLINK"));
                 blinkEnabled = !blinkEnabled;
+                break;
+            }
+            case 68: {
+                // 4
+                Serial.println(F("SPEED 1"));
+                speed = 1;
+                break;
+            }
+            case 67: {
+                // 6
+                Serial.println(F("SPEED 3"));
+                speed = 3;
                 break;
             }
             default: {
